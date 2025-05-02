@@ -6,6 +6,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+import numpy as np
 
 # 1. Load your data
 df = pd.read_csv('bot_detection_data.csv')
@@ -13,13 +14,51 @@ df = pd.read_csv('bot_detection_data.csv')
 df['Verified'] = df['Verified'].astype(int)
 
 
-# 2. Pick your input features and label
-input_features = ['Follower Count', 'Retweet Count', 'Mention Count','Verified']
-label_column = 'Bot Label'
+# 2. Extract and engineer features
+features = []
+labels = []
+
+for _, row in df.iterrows():
+    try:
+        username = row['Username']
+        text = row['Tweet']
+        hashtags = row['Hashtags']
+        rt_count = int(row['Retweet Count'])
+        mentions = int(row['Mention Count'])
+        followers = int(row['Follower Count'])
+        verified = int(row['Verified'])
+
+        # skip rows with missing critical info
+        if pd.isnull(username) or pd.isnull(text): continue
+
+        # feature engineering
+        char_count = len(text)
+        word_count = str(text).count(' ')
+        punct_count = sum(1 for c in str(text) if not c.isalnum() and c.isascii())
+        hashtag_count = str(hashtags).count(' ')
+
+        rt_follower_ratio = rt_count / followers if followers != 0 else 1e9
+        mentions_follower_ratio = mentions / followers if followers != 0 else 1e9
+
+        username_length = len(username)
+        username_num_digits = sum(1 for c in str(username) if c.isnumeric())
+
+        # append features
+        features.append([
+            rt_count, mentions, followers, verified,
+            char_count, word_count, punct_count, hashtag_count,
+            rt_follower_ratio, mentions_follower_ratio,
+            username_length, username_num_digits
+        ])
+
+        # append label
+        labels.append(int(row['Bot Label']))
+    except Exception as e:
+        pass
 
 
-X = df[input_features].values
-y = df[label_column].values
+X = np.array(features, dtype=np.float32)
+y = np.array(labels, dtype=np.float32)
 
 # 3. Scale the input features
 scaler = StandardScaler()
@@ -45,9 +84,9 @@ test_loader = DataLoader(test_dataset, batch_size=32)
 class BotDetectorNN(nn.Module):
     def __init__(self, input_size):
         super(BotDetectorNN, self).__init__()
-        self.fc1 = nn.Linear(input_size, 64)
-        self.fc2 = nn.Linear(64, 32)
-        self.fc3 = nn.Linear(32, 2)  # 2 outputs: bot or human
+        self.fc1 = nn.Linear(input_size, 24)
+        self.fc2 = nn.Linear(24, 12)
+        self.fc3 = nn.Linear(12, 2)  # 2 outputs: bot or human
         self.relu = nn.ReLU()
 
     def forward(self, x):
@@ -56,7 +95,7 @@ class BotDetectorNN(nn.Module):
         x = self.fc3(x)
         return x
 
-input_size = len(input_features)
+input_size = len(features[0])
 model = BotDetectorNN(input_size)
 
 # 7. Set up loss and optimizer
