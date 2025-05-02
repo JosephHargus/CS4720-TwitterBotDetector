@@ -8,6 +8,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 import numpy as np
+from sklearn.metrics import confusion_matrix
 
 # 1. Load your data
 df = pd.read_csv('bot_detection_data.csv')
@@ -66,10 +67,8 @@ scaler = StandardScaler()
 X = scaler.fit_transform(X)
 
 # 3.1 Perform PCA
-print(X.shape[1])
 pca = PCA(n_components=0.95) # keep 95% of variance
 X = pca.fit_transform(X)
-print(X.shape[1])
 
 # 4. Split into train/test
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -91,9 +90,9 @@ test_loader = DataLoader(test_dataset, batch_size=32)
 class BotDetectorNN(nn.Module):
     def __init__(self, input_size):
         super(BotDetectorNN, self).__init__()
-        self.fc1 = nn.Linear(input_size, 24)
-        self.fc2 = nn.Linear(24, 12)
-        self.fc3 = nn.Linear(12, 2)  # 2 outputs: bot or human
+        self.fc1 = nn.Linear(input_size, 48)
+        self.fc2 = nn.Linear(48, 24)
+        self.fc3 = nn.Linear(24, 2)  # 2 outputs: bot or human
         self.relu = nn.ReLU()
 
     def forward(self, x):
@@ -126,12 +125,18 @@ for epoch in range(epochs):
 # 9. Test the model
 correct = 0
 total = 0
+all_preds = []
+all_true = []
 with torch.no_grad():
     for batch_X, batch_y in test_loader:
         outputs = model(batch_X)
         _, predicted = torch.max(outputs, 1)
+        all_preds.extend(predicted.numpy())
+        all_true.extend(batch_y.numpy())
         total += batch_y.size(0)
         correct += (predicted == batch_y).sum().item()
 
 accuracy = 100 * correct / total
 print(f"Test Accuracy: {accuracy:.2f}%")
+cm = confusion_matrix(all_true, all_preds)
+print('Confusion matrix:\n' + str(cm))
