@@ -6,6 +6,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 import numpy as np
 
 # 1. Load your data
@@ -64,6 +65,12 @@ y = np.array(labels, dtype=np.float32)
 scaler = StandardScaler()
 X = scaler.fit_transform(X)
 
+# 3.1 Perform PCA
+print(X.shape[1])
+pca = PCA(n_components=0.95) # keep 95% of variance
+X = pca.fit_transform(X)
+print(X.shape[1])
+
 # 4. Split into train/test
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
@@ -95,7 +102,7 @@ class BotDetectorNN(nn.Module):
         x = self.fc3(x)
         return x
 
-input_size = len(features[0])
+input_size = len(X[0])
 model = BotDetectorNN(input_size)
 
 # 7. Set up loss and optimizer
