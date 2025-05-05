@@ -10,6 +10,7 @@ from sklearn.decomposition import PCA
 import numpy as np
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 # 1. Load your data
@@ -30,7 +31,6 @@ for _, row in df.iterrows():
         rt_count = int(row['Retweet Count'])
         mentions = int(row['Mention Count'])
         followers = int(row['Follower Count'])
-        verified = int(row['Verified'])
 
         # skip rows with missing critical info
         if pd.isnull(username) or pd.isnull(text): continue
@@ -39,20 +39,23 @@ for _, row in df.iterrows():
         char_count = len(text)
         word_count = str(text).count(' ')
         punct_count = sum(1 for c in str(text) if not c.isalnum() and c.isascii())
-        hashtag_count = str(hashtags).count(' ')
-
-        rt_follower_ratio = rt_count / followers if followers != 0 else 1e9
-        mentions_follower_ratio = mentions / followers if followers != 0 else 1e9
 
         username_length = len(username)
-        username_num_digits = sum(1 for c in str(username) if c.isnumeric())
+
+        from textblob import TextBlob
+        import textstat
+        # Calculate sentiment polarity, subjectivity, and readability
+        sentiment = TextBlob(text).sentiment
+        polarity = sentiment.polarity
+        subjectivity = sentiment.subjectivity
+        readability = textstat.flesch_reading_ease(text)
 
         # append features
         features.append([
-            rt_count, mentions, followers, verified,
-            char_count, word_count, punct_count, hashtag_count,
-            rt_follower_ratio, mentions_follower_ratio,
-            username_length, username_num_digits
+            rt_count, mentions, followers,
+            char_count, word_count, punct_count,
+            username_length,
+            polarity, subjectivity, readability
         ])
 
         # append label
@@ -60,6 +63,29 @@ for _, row in df.iterrows():
     except Exception as e:
         pass
 
+# # Plot feature distributions for each class
+# features = np.array(features)
+# labels = np.array(labels)
+
+# num_features = features.shape[1]
+# feature_names = [
+#     "Retweet Count", "Mention Count", "Follower Count",
+#     "Char Count", "Word Count", "Punct Count",
+#     "Username Length",
+#     "Polarity", "Subjectivity", "Readability"
+# ]
+
+# for i in range(num_features):
+#     plt.figure(figsize=(8, 4))
+#     bot_feature = features[labels == 1, i]
+#     human_feature = features[labels == 0, i]
+#     sns.kdeplot(bot_feature, label="Bot", shade=True, color="red")
+#     sns.kdeplot(human_feature, label="Human", shade=True, color="blue")
+#     plt.title(f"Feature Distribution: {feature_names[i]}")
+#     plt.xlabel(feature_names[i])
+#     plt.ylabel("Density")
+#     plt.legend()
+#     plt.show()
 
 X = np.array(features, dtype=np.float32)
 y = np.array(labels, dtype=np.float32)
@@ -99,9 +125,9 @@ test_loader = DataLoader(test_dataset, batch_size=32)
 class BotDetectorNN(nn.Module):
     def __init__(self, input_size):
         super(BotDetectorNN, self).__init__()
-        self.fc1 = nn.Linear(input_size, 10)
-        self.fc2 = nn.Linear(10, 5)
-        self.fc3 = nn.Linear(5, 2)  # 2 outputs: bot or human
+        self.fc1 = nn.Linear(input_size, 16)
+        self.fc2 = nn.Linear(16, 8)
+        self.fc3 = nn.Linear(8, 2)  # 2 outputs: bot or human
         self.relu = nn.ReLU()
 
     def forward(self, x):
@@ -120,7 +146,7 @@ optimizer = optim.Adam(model.parameters(), lr=0.001)
 # 8. Train the model
 test_losses = []
 val_losses = []
-epochs = 50
+epochs = 25
 for epoch in range(epochs):
     total_loss = 0
     for batch_X, batch_y in train_loader:
@@ -170,4 +196,9 @@ with torch.no_grad():
 accuracy = 100 * correct / total
 print(f"Test Accuracy: {accuracy:.2f}%")
 cm = confusion_matrix(all_true, all_preds)
+sns.heatmap(cm.T, square=True, annot=True, fmt='d', cbar=False, cmap='Blues')
+plt.xlabel('True label')
+plt.ylabel('Predicted label')
+plt.title('Confusion Matrix')
+plt.show()
 print('Confusion matrix:\n' + str(cm))
