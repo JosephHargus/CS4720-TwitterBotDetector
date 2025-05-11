@@ -11,20 +11,23 @@ import numpy as np
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
+from textblob import TextBlob
+import textstat
 
 
-# 1. Load your data
+# load the dataset
 df = pd.read_csv('bot_detection_data.csv')
 # Convert 'Verified' True/False into 0/1
 df['Verified'] = df['Verified'].astype(int)
 
 
-# 2. Extract and engineer features
+# extract and engineer features
 features = []
 labels = []
 
 for _, row in df.iterrows():
     try:
+        # features provided in the dataset
         username = row['Username']
         text = row['Tweet']
         hashtags = row['Hashtags']
@@ -39,18 +42,15 @@ for _, row in df.iterrows():
         char_count = len(text)
         word_count = str(text).count(' ')
         punct_count = sum(1 for c in str(text) if not c.isalnum() and c.isascii())
-
         username_length = len(username)
 
-        from textblob import TextBlob
-        import textstat
-        # Calculate sentiment polarity, subjectivity, and readability
+        # Calculate sentiment polarity, subjectivity, and readability from tweet text
         sentiment = TextBlob(text).sentiment
         polarity = sentiment.polarity
         subjectivity = sentiment.subjectivity
         readability = textstat.flesch_reading_ease(text)
 
-        # append features
+        # append all engineered/given features
         features.append([
             rt_count, mentions, followers,
             char_count, word_count, punct_count,
@@ -87,24 +87,24 @@ for _, row in df.iterrows():
 #     plt.legend()
 #     plt.show()
 
+# Convert features and labels to numpy arrays
 X = np.array(features, dtype=np.float32)
 y = np.array(labels, dtype=np.float32)
 
-# 3. Scale the input features
+# Scale the input features
 scaler = StandardScaler()
 X = scaler.fit_transform(X)
 
-# 3.1 Perform PCA
+# Perform PCA
 pca = PCA(n_components=0.95) # keep 95% of variance
 X = pca.fit_transform(X)
 
-# 4. Split into train/test
+# Split into train/test/validation sets
+# 70% training, 15% validation, 15% testing
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-
-# split into test/validation
 X_test, X_val, y_test, y_val = train_test_split(X_test, y_test, test_size=0.5, random_state=42)
 
-# Convert to tensors
+# Convert to torch tensors
 X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
 y_train_tensor = torch.tensor(y_train, dtype=torch.long)
 X_val_tensor = torch.tensor(X_val, dtype=torch.float32)
@@ -112,16 +112,19 @@ y_val_tensor = torch.tensor(y_val, dtype=torch.long)
 X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
 y_test_tensor = torch.tensor(y_test, dtype=torch.long)
 
-# 5. Create DataLoaders
+# Create Tenser Datasets
 train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
 val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
 test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
 
+# create DataLoaders
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=32)
 test_loader = DataLoader(test_dataset, batch_size=32)
 
-# 6. Define your model
+
+
+# Define the model
 class BotDetectorNN(nn.Module):
     def __init__(self, input_size):
         super(BotDetectorNN, self).__init__()
@@ -139,11 +142,11 @@ class BotDetectorNN(nn.Module):
 input_size = len(X[0])
 model = BotDetectorNN(input_size)
 
-# 7. Set up loss and optimizer
+# Set up loss and optimizer functions
 loss_function = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-# 8. Train the model
+# Train the model
 test_losses = []
 val_losses = []
 epochs = 25
@@ -179,7 +182,10 @@ plt.title('Learning Curves')
 plt.legend()
 plt.show()
 
-# 9. Test the model
+
+
+
+# Test the model
 correct = 0
 total = 0
 all_preds = []
@@ -193,6 +199,8 @@ with torch.no_grad():
         total += batch_y.size(0)
         correct += (predicted == batch_y).sum().item()
 
+
+# calculate and print statistics
 accuracy = 100 * correct / total
 print(f"Test Accuracy: {accuracy:.2f}%")
 cm = confusion_matrix(all_true, all_preds)
