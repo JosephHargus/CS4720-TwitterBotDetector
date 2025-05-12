@@ -8,12 +8,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 import numpy as np
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, f1_score
 import matplotlib.pyplot as plt
 import seaborn as sns
 from textblob import TextBlob
 import textstat
-
 
 # load the dataset
 df = pd.read_csv('bot_detection_data.csv')
@@ -50,12 +49,18 @@ for _, row in df.iterrows():
         subjectivity = sentiment.subjectivity
         readability = textstat.flesch_reading_ease(text)
 
+        verified = row['Verified']
+        hashtag_count = len(hashtags.split(' ')) if pd.notnull(hashtags) else 0
+        rt_followers_ratio = rt_count / followers if followers > 0 else 0
+        mentions_followers_ratio = mentions / followers if followers > 0 else 0
+
         # append all engineered/given features
+        # the following features resulted in the best performance
         features.append([
             rt_count, mentions, followers,
             char_count, word_count, punct_count,
             username_length,
-            polarity, subjectivity, readability
+            verified,  hashtag_count, rt_followers_ratio, mentions_followers_ratio
         ])
 
         # append label
@@ -128,9 +133,9 @@ test_loader = DataLoader(test_dataset, batch_size=32)
 class BotDetectorNN(nn.Module):
     def __init__(self, input_size):
         super(BotDetectorNN, self).__init__()
-        self.fc1 = nn.Linear(input_size, 16)
-        self.fc2 = nn.Linear(16, 8)
-        self.fc3 = nn.Linear(8, 2)  # 2 outputs: bot or human
+        self.fc1 = nn.Linear(input_size, 10)
+        self.fc2 = nn.Linear(10, 5)
+        self.fc3 = nn.Linear(5, 2)  # 2 outputs: bot or human
         self.relu = nn.ReLU()
 
     def forward(self, x):
@@ -204,9 +209,10 @@ with torch.no_grad():
 accuracy = 100 * correct / total
 print(f"Test Accuracy: {accuracy:.2f}%")
 cm = confusion_matrix(all_true, all_preds)
-sns.heatmap(cm.T, square=True, annot=True, fmt='d', cbar=False, cmap='Blues')
-plt.xlabel('True label')
-plt.ylabel('Predicted label')
-plt.title('Confusion Matrix')
-plt.show()
+# sns.heatmap(cm.T, square=True, annot=True, fmt='d', cbar=False, cmap='Blues')
+# plt.xlabel('True label')
+# plt.ylabel('Predicted label')
+# plt.title('Confusion Matrix')
+# plt.show()
 print('Confusion matrix:\n' + str(cm))
+print('F1 score: ' + str(f1_score(all_true, all_preds, average='weighted')))
